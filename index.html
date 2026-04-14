@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Loan Strategy Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+    #root { max-width: 760px; margin: 0 auto; padding: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-type="module">
+const { useState, useMemo } = React;
+
+const FPL150 = 23475;
+
+function calcIBRMonthly(agi) {
+  return Math.max(0, Math.round((agi - FPL150) * 0.10 / 12));
+}
+
+function calcRAPMonthly(agi) {
+  if (agi <= 10000) return 10;
+  const brackets = [[20000,.01],[30000,.02],[40000,.03],[50000,.04],[60000,.05],[70000,.06],[80000,.07],[90000,.08],[100000,.09],[Infinity,.10]];
+  const pct = brackets.find(([c]) => agi <= c)[1];
+  return Math.max(10, Math.round(agi * pct / 12));
+}
+
+function getAGI(year, priorYearAGI, resSalary, attendSalary, resYears) {
+  if (year === 1) return priorYearAGI;
+  if (year <= resYears) return resSalary;
+  if (year === resYears + 1) return resSalary;
+  return attendSalary;
+}
+
+function simulateIDR({ startBal, avgRate, priorAGI, resSalary, attendSalary, resYears, plan, years }) {
+  const r = avgRate / 100;
+  let bal = startBal;
+  let totalPaid = 0;
+  const timeline = [];
+
+  for (let y = 1; y <= years; y++) {
+    const agi = getAGI(y, priorAGI, resSalary, attendSalary, resYears);
+    const isRes = y <= resYears;
+    const monthly = plan === "ibr" ? calcIBRMonthly(agi) : calcRAPMonthly(agi);
+    const annualPay = monthly * 12;
+    const annualInterest = bal * r;
+
+    if (plan === "rap") {
+      const principalFromPayment = Math.max(0, annualPay - annualInterest);
+      let principalReduction = principalFromPayment;
+      if (principalFromPayment < 600) principalReduction = Math.min(600, principalFromPayment + 600);
+      bal = Math.max(0, bal - principalReduction);
+    } else {
+      bal = Math.max(0, bal + annualInterest - annualPay);
+    }
+
+    totalPaid += annualPay;
+    timeline.push({
+      year: y, phase: isRes ? "Residency" : "Attending", agi: Math.round(agi),
+      monthly, annualPay: Math.round(annualPay), interest: Math.round(annualInterest),
+      balance: Math.round(bal), totalPaid: Math.round(totalPaid),
+    });
+    if (bal <= 0) break;
+  }
+  return { timeline, totalPaid: Math.round(totalPaid), finalBal: Math.round(bal) };
+}
+
+function simulateRefi(startBal, rate, years) {
+  const r = rate / 100;
+  const n = years * 12;
+  if (startBal <= 0) return { monthly: 0, totalPaid: 0, timeline: [] };
+  const monthly = Math.round(startBal * (r/12) / (1 - Math.pow(1 + r/12, -n)));
+  return { monthly, totalPaid: monthly * n, timeline: [] };
+}
+
+const fmt = n => "$" + Math.abs(Math.round(n)).toLocaleString();
+
+const Badge = ({ bg, color, children }) => (
+  <span style={{ display: "inline-block", fontSize: 9, padding: "2px 7px", borderRadius: 5, fontWeight: 600, background: bg, color, marginLeft: 5, verticalAlign: "middle" }}>{children}</span>
+);
+
+function App() {
+  const [startBal, setStartBal] = useState(622000);
+  const [avgRate, setAvgRate] = useState(7.2);
+  const [priorAGI, setPriorAGI] = useState(12000);
+  const [resSalary, setResSalary] = useState(65000);
+  const [attendSalary, setAttendSalary] = useState(550000);
+  const [resYears, setResYears] = useState(4);
+  const [refiRate, setRefiRate] = useState(4.5);
+  const [refiYears, setRefiYears] = useState(5);
+  const [showDetail, setShowDetail] = useState(null);
+
+  const ibrRes = useMemo(() => simulateIDR({ startBal, avgRate, priorAGI, resSalary, attendSalary, resYears, plan: "ibr", years: resYears }), [startBal, avgRate, priorAGI, resSalary, attendSalary, resYears]);
+  const ibrRefi = useMemo(() => simulateRefi(ibrRes.finalBal, refiRate, refiYears), [ibrRes.finalBal, refiRate, refiYears]);
+  const ibrTotal = ibrRes.totalPaid + ibrRefi.totalPaid;
+
+  const rapRes = useMemo(() => simulateIDR({ startBal, avgRate, priorAGI, resSalary, attendSalary, resYears, plan: "rap", years: resYears }), [startBal, avgRate, priorAGI, resSalary, attendSalary, resYears]);
+  const rapRefi = useMemo(() => simulateRefi(rapRes.finalBal, refiRate, refiYears), [rapRes.finalBal, refiRate, refiYears]);
+  const rapTotal = rapRes.totalPaid + rapRefi.totalPaid;
+
+  const pslf = useMemo(() => simulateIDR({ startBal, avgRate, priorAGI, resSalary, attendSalary, resYears, plan: "ibr", years: 10 }), [startBal, avgRate, priorAGI, resSalary, attendSalary, resYears]);
+  const pslfForgiven = pslf.finalBal;
+  const pslfTotal = pslf.totalPaid;
+
+  const strategies = [
+    { key: "pslf", name: "IBR + PSLF", total: pslfTotal, badge: null },
+    { key: "rap", name: "RAP \u2192 Refi", total: rapTotal, badge: null },
+    { key: "ibr", name: "IBR \u2192 Refi", total: ibrTotal, badge: null },
+  ].sort((a, b) => a.total - b.total);
+  strategies[0].badge = "cheapest";
+
+  const Slider = ({ label, min, max, step, value, onChange, format }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} style={{ flex: 1, accentColor: "#378ADD" }} />
+      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
+    </div>
+  );
+
+  const pslfSavingsVsIbr = ibrTotal - pslfTotal;
+  const pslfSavingsVsRap = rapTotal - pslfTotal;
+
+  return (
+    <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", maxWidth: 720, margin: "0 auto", padding: "0.5rem 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Student Loan Strategy Simulator</div>
+        <div style={{ fontSize: 12, color: "#888" }}>IBR+PSLF vs RAP&#8594;Refi vs IBR&#8594;Refi</div>
+      </div>
+
+      <div style={{ background: "#FAFAFA", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 8 }}>Your situation</div>
+        <Slider label="Total loan balance" min={100000} max={1000000} step={10000} value={startBal} onChange={setStartBal} />
+        <Slider label="Avg interest rate" min={3} max={10} step={0.1} value={avgRate} onChange={setAvgRate} format={v => v.toFixed(1) + "%"} />
+        <Slider label="Prior yr AGI (student)" min={0} max={80000} step={1000} value={priorAGI} onChange={setPriorAGI} />
+        <Slider label="Resident salary" min={50000} max={100000} step={1000} value={resSalary} onChange={setResSalary} />
+        <Slider label="Attending salary" min={200000} max={800000} step={10000} value={attendSalary} onChange={setAttendSalary} />
+        <Slider label="Residency length" min={3} max={7} step={1} value={resYears} onChange={setResYears} format={v => v + " years"} />
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginTop: 10, marginBottom: 8 }}>Refinance assumptions (for non-PSLF strategies)</div>
+        <Slider label="Refi interest rate" min={3} max={7} step={0.1} value={refiRate} onChange={setRefiRate} format={v => v.toFixed(1) + "%"} />
+        <Slider label="Refi payoff term" min={2} max={15} step={1} value={refiYears} onChange={setRefiYears} format={v => v + " years"} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        {strategies.map((s) => {
+          const isPslf = s.key === "pslf";
+          const isRap = s.key === "rap";
+          const isIbr = s.key === "ibr";
+          const highlight = s.badge === "cheapest";
+          const colors = isPslf ? { bg: "#F0FDF4", border: "#22c55e", accent: "#166534" } : isRap ? { bg: "#EFF6FF", border: "#378ADD", accent: "#185FA5" } : { bg: "#FAFAFA", border: "#E5E5E5", accent: "#1a1a1a" };
+
+          const resData = isPslf ? pslf : isRap ? rapRes : ibrRes;
+          const refiData = isRap ? rapRefi : isIbr ? ibrRefi : null;
+          const balAtRefi = isRap ? rapRes.finalBal : isIbr ? ibrRes.finalBal : null;
+
+          return (
+            <div key={s.key} style={{
+              background: highlight ? colors.bg : "#FAFAFA",
+              border: highlight ? `2px solid ${colors.border}` : "1px solid #E5E5E5",
+              borderRadius: 12, padding: 12,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: colors.accent }}>
+                {s.name}
+                {highlight && <Badge bg="#EAF3DE" color="#3B6D11">cheapest</Badge>}
+              </div>
+
+              <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>Paid during residency</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, fontVariantNumeric: "tabular-nums" }}>{fmt(resData.totalPaid)}</div>
+
+              {refiData ? (
+                <>
+                  <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>Balance at refi</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: balAtRefi > startBal ? "#b33b3b" : "#2d7a2d", fontVariantNumeric: "tabular-nums" }}>{fmt(balAtRefi)}</div>
+                  <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>Refi payment</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, fontVariantNumeric: "tabular-nums" }}>{fmt(refiData.monthly)}/mo</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>Forgiven (tax-free!)</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#166534", fontVariantNumeric: "tabular-nums" }}>{fmt(pslfForgiven)}</div>
+                  <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>Years to forgiveness</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>10 years</div>
+                </>
+              )}
+
+              <div style={{ borderTop: "1px solid #e5e5e5", paddingTop: 6, marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: "#888", marginBottom: 2 }}>TOTAL OUT OF POCKET</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: highlight ? colors.accent : "#1a1a1a", fontVariantNumeric: "tabular-nums" }}>{fmt(s.total)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ background: "#F0FDF4", borderRadius: 12, padding: "14px 16px", marginBottom: 12, border: "1px solid #bbf7d0" }}>
+        <div style={{ fontWeight: 700, color: "#166534", fontSize: 14, marginBottom: 6 }}>
+          PSLF saves you {fmt(pslfSavingsVsRap)} vs RAP&#8594;Refi and {fmt(pslfSavingsVsIbr)} vs IBR&#8594;Refi
+        </div>
+        <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
+          Marshfield qualifies. 10 years of income-driven payments &#8594; remaining balance forgiven <strong>tax-free</strong>. You pay {fmt(pslfTotal)} total and {fmt(pslfForgiven)} is wiped clean. No refinancing, no tax bomb. This isn't even close.
+        </div>
+      </div>
+
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, paddingTop: 8, borderTop: "1px solid #eee" }}>
+        Estimated payments by year
+      </div>
+      <div style={{ overflowX: "auto", marginBottom: 16 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>Year</th>
+              <th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>Phase</th>
+              <th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>AGI used</th>
+              <th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#185FA5", fontSize: 10 }}>IBR /mo</th>
+              <th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#0F6E56", fontSize: 10 }}>RAP /mo</th>
+              <th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: Math.max(10, resYears + 3) }, (_, i) => i + 1).map(y => {
+              const agi = getAGI(y, priorAGI, resSalary, attendSalary, resYears);
+              const ibrMo = calcIBRMonthly(agi);
+              const rapMo = calcRAPMonthly(agi);
+              const diff = rapMo - ibrMo;
+              const isRes = y <= resYears;
+              return (
+                <tr key={y} style={{ background: isRes ? "#FAFAFA" : "transparent" }}>
+                  <td style={{ padding: "5px 4px", fontWeight: 600 }}>{y}</td>
+                  <td style={{ padding: "5px 4px" }}>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600, background: isRes ? "#E6F1FB" : "#EAF3DE", color: isRes ? "#185FA5" : "#3B6D11" }}>
+                      {isRes ? `PGY-${y}` : "Attending"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "5px 4px", fontVariantNumeric: "tabular-nums", color: "#888" }}>{fmt(Math.round(agi))}</td>
+                  <td style={{ padding: "5px 4px", textAlign: "center", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: ibrMo === 0 ? "#2d7a2d" : "#185FA5" }}>
+                    {ibrMo === 0 ? "$0" : fmt(ibrMo)}
+                  </td>
+                  <td style={{ padding: "5px 4px", textAlign: "center", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "#0F6E56" }}>
+                    {fmt(rapMo)}
+                  </td>
+                  <td style={{ padding: "5px 4px", textAlign: "center", fontSize: 11, color: diff > 0 ? "#b33b3b" : diff < 0 ? "#2d7a2d" : "#888", fontVariantNumeric: "tabular-nums" }}>
+                    {diff === 0 ? "\u2014" : (diff > 0 ? "+" : "") + fmt(diff)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Balance trajectory (PSLF path)</div>
+      <div style={{ overflowX: "auto", marginBottom: 16 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              {["Yr", "Phase", "Mo. pay", "Annual interest", "Balance", "Total paid"].map(h => (
+                <th key={h} style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pslf.timeline.map((t, i) => (
+              <tr key={i} style={{ background: t.phase === "Residency" ? "#FAFAFA" : "transparent" }}>
+                <td style={{ padding: "5px 4px", fontWeight: 600 }}>{t.year}</td>
+                <td style={{ padding: "5px 4px" }}>
+                  <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600, background: t.phase === "Residency" ? "#E6F1FB" : "#EAF3DE", color: t.phase === "Residency" ? "#185FA5" : "#3B6D11" }}>{t.phase}</span>
+                </td>
+                <td style={{ padding: "5px 4px", fontVariantNumeric: "tabular-nums" }}>{fmt(t.monthly)}/mo</td>
+                <td style={{ padding: "5px 4px", fontVariantNumeric: "tabular-nums", color: "#b33b3b" }}>{fmt(t.interest)}</td>
+                <td style={{ padding: "5px 4px", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: t.balance > startBal ? "#b33b3b" : "#2d7a2d" }}>{fmt(t.balance)}</td>
+                <td style={{ padding: "5px 4px", fontVariantNumeric: "tabular-nums" }}>{fmt(t.totalPaid)}</td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: "2px solid #22c55e", background: "#F0FDF4" }}>
+              <td colSpan={4} style={{ padding: "8px 4px", fontWeight: 700, color: "#166534" }}>Tax-free forgiveness</td>
+              <td style={{ padding: "8px 4px", fontWeight: 700, color: "#166534", fontVariantNumeric: "tabular-nums" }}>{fmt(pslfForgiven)} wiped</td>
+              <td style={{ padding: "8px 4px", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(pslfTotal)} total</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: 10, color: "#bbb", lineHeight: 1.5 }}>
+        IBR payments based on prior-year AGI. Year 1 uses your pre-residency income. RAP minimum is $10/mo (no $0 payments). RAP interest subsidy = full waiver of unpaid interest + $50/mo principal match. PSLF = 120 qualifying payments at qualifying employer &#8594; tax-free forgiveness. Refi assumes fixed amortization. 2026 FPL for 1 person = $15,650. Not financial advice.
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
