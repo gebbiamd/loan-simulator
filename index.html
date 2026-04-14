@@ -233,7 +233,7 @@ function App() {
 
         <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginTop: 10, marginBottom: 8 }}>Refinance assumptions</div>
         <Slider label="Refi interest rate" min={3} max={7} step={0.1} value={refiRate} onChange={setRefiRate} format={v => v.toFixed(1) + "%"} />
-        <Slider label="Refi payoff term" min={2} max={15} step={1} value={refiYears} onChange={setRefiYears} format={v => v + " years"} />
+        <Slider label="Refi payoff term" min={1} max={15} step={1} value={refiYears} onChange={setRefiYears} format={v => v + " years"} />
       </div>
 
       {/* Ranked strategy cards */}
