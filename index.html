@@ -66,9 +66,10 @@
   <script type="text/babel" data-type="module">
 const { useState, useMemo } = React;
 
-const FPL150 = 23475;
+const FPL150_1 = 23475; // 150% FPL, 1 person
+const FPL150_2 = 31875; // 150% FPL, 2 people
 
-function calcIBR(agi) { return Math.max(0, Math.round((agi - FPL150) * 0.10 / 12)); }
+function calcIBR(agi, fpl150) { return Math.max(0, Math.round((agi - fpl150) * 0.10 / 12)); }
 
 function calcRAP(agi) {
   if (agi <= 10000) return 10;
@@ -76,9 +77,12 @@ function calcRAP(agi) {
   return Math.max(10, Math.round(agi * b.find(([c]) => agi <= c)[1] / 12));
 }
 
-function tax(agi) {
-  const br = [[11600,.10],[47150,.12],[100525,.22],[191950,.24],[243725,.32],[609350,.35],[Infinity,.37]];
-  let t = 0, p = 0; const tx = Math.max(0, agi - 15000);
+function tax(agi, married) {
+  const br = married
+    ? [[23200,.10],[94300,.12],[201050,.22],[383900,.24],[487450,.32],[731200,.35],[Infinity,.37]]
+    : [[11600,.10],[47150,.12],[100525,.22],[191950,.24],[243725,.32],[609350,.35],[Infinity,.37]];
+  const stdDed = married ? 30000 : 15000;
+  let t = 0, p = 0; const tx = Math.max(0, agi - stdDed);
   for (const [c, r] of br) { const ch = Math.min(tx, c) - p; if (ch <= 0) break; t += ch * r; p = c; }
   return Math.round(t);
 }
@@ -89,8 +93,9 @@ function refiCalc(bal, rate, yrs) {
   return { mo, total: mo * n };
 }
 
-function runStrategy({ startBal, avgRate, priorAGI, resSalaries, attendSalary, plan, isPSLF, refiRate, refiYears }) {
+function runStrategy({ startBal, avgRate, priorAGI, resSalaries, attendSalary, plan, isPSLF, refiRate, refiYears, married, spouseIncRes, spouseIncAtt }) {
   const r = avgRate / 100;
+  const fpl150 = married ? FPL150_2 : FPL150_1;
   let bal = startBal, totalPaid = 0;
   const resYears = resSalaries.length;
   const totalYears = isPSLF ? 10 : resYears;
@@ -98,17 +103,23 @@ function runStrategy({ startBal, avgRate, priorAGI, resSalaries, attendSalary, p
 
   const payAGIs = [];
   for (let y = 0; y < totalYears; y++) {
-    if (y === 0) payAGIs.push(priorAGI);
-    else if (y <= resYears) payAGIs.push(resSalaries[Math.min(y-1, resYears-1)]);
-    else if (y === resYears) payAGIs.push(resSalaries[resYears - 1]);
-    else payAGIs.push(attendSalary * Math.pow(1.03, y - resYears - 1));
+    let baseAGI;
+    const isResYear = y < resYears;
+    const spouseInc = isResYear ? spouseIncRes : spouseIncAtt;
+    if (y === 0) baseAGI = priorAGI;
+    else if (y <= resYears) baseAGI = resSalaries[Math.min(y-1, resYears-1)];
+    else if (y === resYears) baseAGI = resSalaries[resYears - 1];
+    else baseAGI = attendSalary * Math.pow(1.03, y - resYears - 1);
+    payAGIs.push(married ? baseAGI + spouseInc : baseAGI);
   }
 
   for (let y = 0; y < totalYears; y++) {
     const isRes = y < resYears;
     const payAGI = payAGIs[y];
-    const actualIncome = isRes ? resSalaries[y] : attendSalary * Math.pow(1.03, y - resYears);
-    const monthly = plan === "ibr" ? calcIBR(payAGI) : calcRAP(payAGI);
+    const spouseInc = isRes ? spouseIncRes : spouseIncAtt;
+    const yourIncome = isRes ? resSalaries[y] : attendSalary * Math.pow(1.03, y - resYears);
+    const householdIncome = married ? yourIncome + spouseInc : yourIncome;
+    const monthly = plan === "ibr" ? calcIBR(payAGI, fpl150) : calcRAP(payAGI);
     const annualPay = monthly * 12;
     const interest = bal * r;
 
@@ -120,12 +131,12 @@ function runStrategy({ startBal, avgRate, priorAGI, resSalaries, attendSalary, p
       bal = Math.max(0, bal + interest - annualPay);
     }
     totalPaid += annualPay;
-    const t = tax(actualIncome);
+    const t = tax(householdIncome, married);
     timeline.push({
-      year: y+1, isRes, payAGI: Math.round(payAGI), actualIncome: Math.round(actualIncome),
+      year: y+1, isRes, payAGI: Math.round(payAGI), actualIncome: Math.round(householdIncome),
       monthly, annualPay: Math.round(annualPay), interest: Math.round(interest),
       balance: Math.round(bal), totalPaid: Math.round(totalPaid),
-      afterTaxAndLoans: Math.round(actualIncome - t - annualPay),
+      afterTaxAndLoans: Math.round(householdIncome - t - annualPay),
     });
   }
 
@@ -142,13 +153,15 @@ function runStrategy({ startBal, avgRate, priorAGI, resSalaries, attendSalary, p
   let tenYrNet = 0;
   for (let y = 0; y < 10; y++) {
     const isRes = y < resYears;
-    const gross = isRes ? resSalaries[y] : attendSalary * Math.pow(1.03, y - resYears);
-    const t = tax(gross);
+    const spouseInc = isRes ? spouseIncRes : spouseIncAtt;
+    const yourGross = isRes ? resSalaries[y] : attendSalary * Math.pow(1.03, y - resYears);
+    const householdGross = married ? yourGross + spouseInc : yourGross;
+    const t = tax(householdGross, married);
     let loanPay;
     if (y < totalYears) loanPay = timeline[y]?.annualPay || 0;
     else if (!isPSLF && y < resYears + refiYears) loanPay = refiMo * 12;
     else loanPay = 0;
-    tenYrNet += gross - t - loanPay;
+    tenYrNet += householdGross - t - loanPay;
   }
 
   return {
@@ -176,10 +189,13 @@ function App() {
   const [privSal, setPrivSal] = useState(550000);
   const [refiRate, setRefiRate] = useState(4.5);
   const [refiYears, setRefiYears] = useState(5);
+  const [married, setMarried] = useState(false);
+  const [spouseIncRes, setSpouseIncRes] = useState(50000);
+  const [spouseIncAtt, setSpouseIncAtt] = useState(0);
   const [expanded, setExpanded] = useState(null);
 
   const resSalaries = Array.from({length: resYears}, (_, i) => pgy1 + i * 2000 + sideInc);
-  const base = { startBal, avgRate, priorAGI, resSalaries, refiRate, refiYears };
+  const base = { startBal, avgRate, priorAGI, resSalaries, refiRate, refiYears, married, spouseIncRes: married ? spouseIncRes : 0, spouseIncAtt: married ? spouseIncAtt : 0 };
 
   const strategies = useMemo(() => {
     const s1 = runStrategy({ ...base, attendSalary: pslfSal, plan: "ibr", isPSLF: true });
@@ -192,7 +208,7 @@ function App() {
       { id: "pp-ibr", name: "Private + IBR", path: "Private", plan: "IBR", color: "#854F0B", bg: "#FFFBEB", border: "#fbbf24", badgeBg: "#FEF3C7", ...s3 },
       { id: "pp-rap", name: "Private + RAP", path: "Private", plan: "RAP", color: "#92400e", bg: "#FFF7ED", border: "#f59e0b", badgeBg: "#FFEDD5", ...s4 },
     ];
-  }, [startBal, avgRate, priorAGI, JSON.stringify(resSalaries), pslfSal, privSal, refiRate, refiYears]);
+  }, [startBal, avgRate, priorAGI, JSON.stringify(resSalaries), pslfSal, privSal, refiRate, refiYears, married, spouseIncRes, spouseIncAtt]);
 
   const ranked = [...strategies].sort((a, b) => b.tenYrNet - a.tenYrNet);
   ranked.forEach((s, i) => { s.rank = i + 1; });
@@ -226,6 +242,22 @@ function App() {
       {/* Sliders */}
       <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 16, border: "1px solid #e5e5e5", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 8 }}>Your situation</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>Filing status</span>
+          <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid #e0e0e0" }}>
+            {[false, true].map(v => (
+              <button key={String(v)} onClick={() => { setMarried(v); if (!v) setSpouseIncome(0); }}
+                style={{
+                  padding: "4px 16px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                  background: married === v ? "#378ADD" : "#fff",
+                  color: married === v ? "#fff" : "#666",
+                  transition: "all 0.15s",
+                }}>{v ? "Married" : "Single"}</button>
+            ))}
+          </div>
+        </div>
+        {married && <Slider label="Spouse inc (res.)" min={0} max={200000} step={5000} value={spouseIncRes} onChange={setSpouseIncRes} />}
+        {married && <Slider label="Spouse inc (att.)" min={0} max={200000} step={5000} value={spouseIncAtt} onChange={setSpouseIncAtt} />}
         <Slider label="Total loan balance" min={100000} max={1000000} step={10000} value={startBal} onChange={setStartBal} />
         <Slider label="Avg interest rate" min={4} max={10} step={0.1} value={avgRate} onChange={setAvgRate} format={v => v.toFixed(1) + "%"} />
         <Slider label="Prior yr AGI" min={0} max={100000} step={1000} value={priorAGI} onChange={setPriorAGI} />
@@ -410,7 +442,7 @@ function App() {
       </div>
 
       <div style={{ fontSize: 10, color: "#bbb", lineHeight: 1.5 }}>
-        IBR = 10% of (AGI - 150% FPL), prior-year AGI. RAP = 1-10% of total AGI (no $0 payments). PSLF = 120 payments at qualifying employer &#8594; tax-free forgiveness. Tax = 2026 single brackets, standard deduction $15K. Resident salary increases $2K/yr. 3% attending raises. Refi = fixed amortization. Not financial advice.
+        IBR = 10% of (AGI - 150% FPL), prior-year AGI. Married filing jointly uses household AGI and family-size FPL. RAP = 1-10% of total AGI (no $0 payments). PSLF = 120 payments at qualifying employer &#8594; tax-free forgiveness. Tax = 2026 brackets (single or MFJ), standard deduction $15K/$30K. Resident salary increases $2K/yr. 3% attending raises. Refi = fixed amortization. Not financial advice.
       </div>
     </div>
   );
