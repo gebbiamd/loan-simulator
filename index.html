@@ -202,13 +202,17 @@ function App() {
   const medalColors = ["#FFD700", "#C0C0C0", "#CD7F32", "#888"];
   const medalLabels = ["1st", "2nd", "3rd", "4th"];
 
-  const Slider = ({ label, min, max, step, value, onChange, format }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-      <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} style={{ flex: 1 }} />
-      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
-    </div>
-  );
+  const Slider = ({ label, min, max, step, value, onChange, format }) => {
+    const pct = ((value - min) / (max - min)) * 100;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
+        <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)}
+          style={{ flex: 1, background: `linear-gradient(to right, #378ADD ${pct}%, #e0e0e0 ${pct}%)` }} />
+        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
+      </div>
+    );
+  };
 
   const best = ranked[0];
 
@@ -361,8 +365,8 @@ function App() {
       </div>
 
       {/* Side-by-side comparison table */}
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, paddingTop: 8, borderTop: "1px solid #eee" }}>Side-by-side comparison</div>
-      <div style={{ overflowX: "auto", marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, paddingTop: 8 }}>Side-by-side comparison</div>
+      <div style={{ overflowX: "auto", marginBottom: 16, background: "#fff", borderRadius: 12, border: "1px solid #e5e5e5", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", padding: "4px 12px 8px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead><tr>
             <th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #ddd", fontWeight: 600, color: "#888", fontSize: 10 }}>Metric</th>
