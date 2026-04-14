@@ -139,6 +139,19 @@ const Badge = ({ bg, color, children }) => (
   <span style={{ display: "inline-block", fontSize: 9, padding: "2px 7px", borderRadius: 5, fontWeight: 600, background: bg, color, marginLeft: 5, verticalAlign: "middle" }}>{children}</span>
 );
 
+const Slider = ({ label, min, max, step, value, onChange, format }) => {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(+e.target.value)}
+        style={{ flex: 1 }} />
+      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
+    </div>
+  );
+};
+
 function App() {
   const [startBal, setStartBal] = useState(622000);
   const [avgRate, setAvgRate] = useState(7.2);
@@ -178,20 +191,6 @@ function App() {
 
   const medalColors = ["#FFD700", "#C0C0C0", "#CD7F32", "#888"];
   const medalLabels = ["1st", "2nd", "3rd", "4th"];
-
-  const Slider = ({ label, min, max, step, value, onChange, format }) => {
-    const pct = ((value - min) / (max - min)) * 100;
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
-        <input type="range" min={min} max={max} step={step} defaultValue={value}
-          onInput={e => onChange(+e.target.value)}
-          key={label}
-          style={{ flex: 1 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
-      </div>
-    );
-  };
 
   const best = ranked[0];
 
