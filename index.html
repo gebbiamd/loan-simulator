@@ -9,8 +9,53 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'DM Sans', system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #f8f9fa; color: #1a1a1a; }
     #root { max-width: 760px; margin: 0 auto; padding: 16px; }
+
+    /* Custom slider styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #378ADD;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 2px 8px rgba(55,138,221,0.4);
+    }
+    input[type="range"]::-webkit-slider-thumb:active {
+      transform: scale(1.1);
+      background: #2a6db5;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #378ADD;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-track {
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+    }
   </style>
 </head>
 <body>
@@ -160,7 +205,7 @@ function App() {
   const Slider = ({ label, min, max, step, value, onChange, format }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
       <span style={{ fontSize: 11, color: "#888", minWidth: 115 }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} style={{ flex: 1, accentColor: "#378ADD" }} />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} style={{ flex: 1 }} />
       <span style={{ fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{format ? format(value) : fmt(value)}</span>
     </div>
   );
@@ -175,7 +220,7 @@ function App() {
       </div>
 
       {/* Sliders */}
-      <div style={{ background: "#FAFAFA", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 16, border: "1px solid #e5e5e5", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 8 }}>Your situation</div>
         <Slider label="Total loan balance" min={100000} max={1000000} step={10000} value={startBal} onChange={setStartBal} />
         <Slider label="Avg interest rate" min={4} max={10} step={0.1} value={avgRate} onChange={setAvgRate} format={v => v.toFixed(1) + "%"} />
@@ -204,11 +249,12 @@ function App() {
               <div
                 onClick={() => setExpanded(isExp ? null : s.id)}
                 style={{
-                  background: isBest ? s.bg : "#FAFAFA",
-                  border: isBest ? `2px solid ${s.border}` : "1px solid #E5E5E5",
+                  background: isBest ? s.bg : "#fff",
+                  border: isBest ? `2px solid ${s.border}` : "1px solid #e5e5e5",
                   borderRadius: isExp ? "12px 12px 0 0" : 12,
                   padding: "12px 14px", cursor: "pointer",
                   transition: "all 0.15s",
+                  boxShadow: isBest ? `0 2px 8px ${s.border}33` : "0 1px 3px rgba(0,0,0,0.04)",
                 }}
               >
                 {/* Header row */}
@@ -251,7 +297,7 @@ function App() {
 
               {/* Expanded timeline */}
               {isExp && (
-                <div style={{ background: "#fff", border: "1px solid #e5e5e5", borderTop: "none", borderRadius: "0 0 12px 12px", padding: 12, overflowX: "auto" }}>
+                <div style={{ background: "#fff", border: "1px solid #e5e5e5", borderTop: "none", borderRadius: "0 0 12px 12px", padding: 12, overflowX: "auto", boxShadow: "0 2px 4px rgba(0,0,0,0.04)" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
                     <thead><tr>
                       {["Yr", "Phase", "AGI for pay", "Mo. payment", "Annual", "Interest", "Balance", "Net income"].map(h => (
